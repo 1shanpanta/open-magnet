@@ -30,15 +30,25 @@ enum OpenMagnetPosition: String, CaseIterable {
     case rightThird = "Right Third"
 }
 
+// Returns the screen the user is currently looking at — the one containing
+// the mouse cursor. Handles multi-monitor setups where NSScreen.main would
+// otherwise snap to the wrong display.
+func currentScreen() -> NSScreen {
+    let mouse = NSEvent.mouseLocation
+    return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
+}
+
 // ── window manipulation via AppleScript ──────────────────────────
 func openMagnetWindow(to pos: OpenMagnetPosition) {
-    guard let screen = NSScreen.main else { return }
+    let screen = currentScreen()
     let v = screen.visibleFrame
-    let fullH = screen.frame.height
+    // AppleScript `bounds` measures Y from the top of the primary display.
+    // For correct Y-flip on secondary monitors, subtract from the primary's height.
+    let primaryH = (NSScreen.screens.first { $0.frame.origin == .zero } ?? screen).frame.height
 
     // convert from NSScreen coords (origin bottom-left) to screen coords (origin top-left)
     let sx = Int(v.origin.x)
-    let sy = Int(fullH - v.origin.y - v.height)
+    let sy = Int(primaryH - v.origin.y - v.height)
     let sw = Int(v.width)
     let sh = Int(v.height)
 
@@ -141,9 +151,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildMenu()
         registerHotkeys()
+        requestAutomationPermission()
 
         // quick test: log to confirm running
         NSLog("OpenMagnet: running, hotkeys registered")
+    }
+
+    // Fire a harmless AppleScript at launch so macOS shows the Automation
+    // permission dialog immediately, rather than silently on first hotkey press.
+    func requestAutomationPermission() {
+        let probe = """
+        tell application "System Events"
+            name of first process
+        end tell
+        """
+        var error: NSDictionary?
+        NSAppleScript(source: probe)?.executeAndReturnError(&error)
     }
 
     func buildMenu() {
