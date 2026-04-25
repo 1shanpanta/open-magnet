@@ -53,5 +53,13 @@ PLIST
 codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 codesign --verify --verbose "$APP_BUNDLE"
 
+# Install to ~/Applications via rsync. Only the changed pieces of the bundle
+# copy across, --delete prunes anything we removed, and because we sign with
+# a stable identity the existing TCC Automation grant carries over.
+INSTALL_DIR="$HOME/Applications"
+mkdir -p "$INSTALL_DIR"
+rsync -a --delete "$APP_BUNDLE/" "$INSTALL_DIR/$APP_NAME.app/"
+
 echo "Built and signed: $APP_BUNDLE"
-echo "Run:   open $APP_BUNDLE"
+echo "Installed:        $INSTALL_DIR/$APP_NAME.app"
+echo "Run:   open '$INSTALL_DIR/$APP_NAME.app'"
