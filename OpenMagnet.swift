@@ -42,7 +42,7 @@ func currentScreen() -> NSScreen {
 func openMagnetWindow(to pos: OpenMagnetPosition) {
     let screen = currentScreen()
     let v = screen.visibleFrame
-    // AppleScript `bounds` measures Y from the top of the primary display.
+    // AppleScript position is measured from the top-left of the primary display.
     // For correct Y-flip on secondary monitors, subtract from the primary's height.
     let primaryH = (NSScreen.screens.first { $0.frame.origin == .zero } ?? screen).frame.height
 
@@ -72,12 +72,16 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     case .rightThird:   x = sx + sw * 2 / 3; w = sw / 3
     }
 
+    // Drive the window via System Events rather than telling the frontmost app
+    // directly. This works for non-scriptable apps (Electron, JetBrains, etc.)
+    // and avoids the process-name vs scriptable-app-name mismatch (VS Code's
+    // process is "Code" but `tell application "Code"` does not resolve).
     let script = """
     tell application "System Events"
-        set frontApp to name of first application process whose frontmost is true
-    end tell
-    tell application frontApp
-        set bounds of front window to {\(x), \(y), \(x + w), \(y + h)}
+        tell (first process whose frontmost is true)
+            set position of front window to {\(x), \(y)}
+            set size of front window to {\(w), \(h)}
+        end tell
     end tell
     """
 
