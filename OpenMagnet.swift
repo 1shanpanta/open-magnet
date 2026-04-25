@@ -54,22 +54,26 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
 
     var x = sx, y = sy, w = sw, h = sh
 
+    // Width/height for the right/bottom side is computed as `sw - sw/2` (and
+    // similarly for thirds) so the trailing edge always lands exactly on the
+    // screen edge when the dimension is odd. Using `sw / 2` on both sides
+    // would leave a 1-px gap.
     switch pos {
     case .leftHalf:     w = sw / 2
-    case .rightHalf:    x = sx + sw / 2; w = sw / 2
+    case .rightHalf:    x = sx + sw / 2; w = sw - sw / 2
     case .topHalf:      h = sh / 2
-    case .bottomHalf:   y = sy + sh / 2; h = sh / 2
+    case .bottomHalf:   y = sy + sh / 2; h = sh - sh / 2
     case .maximize:     break
     case .center:
         w = sw * 2 / 3; h = sh * 2 / 3
         x = sx + (sw - w) / 2; y = sy + (sh - h) / 2
     case .topLeft:      w = sw / 2; h = sh / 2
-    case .topRight:     x = sx + sw / 2; w = sw / 2; h = sh / 2
-    case .bottomLeft:   y = sy + sh / 2; w = sw / 2; h = sh / 2
-    case .bottomRight:  x = sx + sw / 2; y = sy + sh / 2; w = sw / 2; h = sh / 2
+    case .topRight:     x = sx + sw / 2; w = sw - sw / 2; h = sh / 2
+    case .bottomLeft:   y = sy + sh / 2; w = sw / 2; h = sh - sh / 2
+    case .bottomRight:  x = sx + sw / 2; y = sy + sh / 2; w = sw - sw / 2; h = sh - sh / 2
     case .leftThird:    w = sw / 3
-    case .centerThird:  x = sx + sw / 3; w = sw / 3
-    case .rightThird:   x = sx + sw * 2 / 3; w = sw / 3
+    case .centerThird:  x = sx + sw / 3; w = sw * 2 / 3 - sw / 3
+    case .rightThird:   x = sx + sw * 2 / 3; w = sw - sw * 2 / 3
     }
 
     // Drive the window via System Events rather than telling the frontmost app
