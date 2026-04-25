@@ -80,11 +80,17 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     // directly. This works for non-scriptable apps (Electron, JetBrains, etc.)
     // and avoids the process-name vs scriptable-app-name mismatch (VS Code's
     // process is "Code" but `tell application "Code"` does not resolve).
+    //
+    // Resolve the front process to a variable first; nesting a tell inside a
+    // `whose` filter breaks `front window` (AppleScript misparses it as
+    // `window 1 of process 1 whose frontmost = true`, errors -1719). Using
+    // `window 1` of an explicit reference works.
     let script = """
     tell application "System Events"
-        tell (first process whose frontmost is true)
-            set position of front window to {\(x), \(y)}
-            set size of front window to {\(w), \(h)}
+        set frontProc to first application process whose frontmost is true
+        tell window 1 of frontProc
+            set position to {\(x), \(y)}
+            set size to {\(w), \(h)}
         end tell
     end tell
     """
