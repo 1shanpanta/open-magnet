@@ -158,10 +158,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         buildMenu()
-        registerHotkeys()
+        // Trigger the Automation prompt before hotkeys go live so the user's
+        // first Ctrl+Opt+… is not eaten by the consent dialog.
         requestAutomationPermission()
+        registerHotkeys()
 
-        // quick test: log to confirm running
         NSLog("OpenMagnet: running, hotkeys registered")
     }
 
