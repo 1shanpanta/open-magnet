@@ -16,6 +16,9 @@ swiftc -O -o "$APP_BUNDLE/Contents/MacOS/$APP_NAME" \
   -framework Carbon \
   OpenMagnet.swift
 
+# Bundle the app icon
+cp resources/AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
 # Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -32,6 +35,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <string>1.0</string>
     <key>CFBundleExecutable</key>
     <string>OpenMagnet</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>
