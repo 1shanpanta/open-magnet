@@ -1,0 +1,45 @@
+name: release
+
+# Build a universal, ad-hoc signed OpenMagnet.app and attach it as a .zip.
+# Push a tag like v1.0 to publish a Release; run manually (workflow_dispatch)
+# to just build and grab the zip as an artifact for testing.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal, ad-hoc signed app
+        run: UNIVERSAL=1 INSTALL=0 ./build.sh
+
+      - name: Show binary architectures
+        run: lipo -archs build/OpenMagnet.app/Contents/MacOS/OpenMagnet
+
+      - name: Zip the app bundle
+        run: ditto -c -k --keepParent build/OpenMagnet.app build/OpenMagnet.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenMagnet-zip
+          path: build/OpenMagnet.zip
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES='Universal (arm64 + x86_64), ad-hoc signed (not notarized).
+
+          First launch: right-click **OpenMagnet.app** and choose **Open**, then confirm, to get past Gatekeeper. Or run `xattr -dr com.apple.quarantine OpenMagnet.app` once.'
+          gh release create "$GITHUB_REF_NAME" build/OpenMagnet.zip --title "$GITHUB_REF_NAME" --notes "$NOTES" \
+            || gh release upload "$GITHUB_REF_NAME" build/OpenMagnet.zip --clobber
