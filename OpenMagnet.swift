@@ -1,9 +1,10 @@
 import Cocoa
 import Carbon
+import ApplicationServices
 
 // ── OpenMagnet: a minimal Magnet clone ──────────────────────────────────
 // Menu bar app. Global hotkeys move/resize the focused window.
-// Uses AppleScript for window manipulation (more reliable permissions).
+// Uses the macOS Accessibility API (AXUIElement) for window manipulation.
 //
 // Shortcuts (Ctrl + Option + ...):
 //   Left/Right  → halves
@@ -38,11 +39,11 @@ func currentScreen() -> NSScreen {
     return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
 }
 
-// ── window manipulation via AppleScript ──────────────────────────
+// ── window manipulation via Accessibility API ────────────────────
 func openMagnetWindow(to pos: OpenMagnetPosition) {
     let screen = currentScreen()
     let v = screen.visibleFrame
-    // AppleScript position is measured from the top-left of the primary display.
+    // AX uses top-left origin of the primary display, same as AppleScript did.
     // For correct Y-flip on secondary monitors, subtract from the primary's height.
     let primaryH = (NSScreen.screens.first { $0.frame.origin == .zero } ?? screen).frame.height
 
@@ -76,32 +77,35 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     case .rightThird:   x = sx + sw * 2 / 3; w = sw - sw * 2 / 3
     }
 
-    // Drive the window via System Events rather than telling the frontmost app
-    // directly. This works for non-scriptable apps (Electron, JetBrains, etc.)
-    // and avoids the process-name vs scriptable-app-name mismatch (VS Code's
-    // process is "Code" but `tell application "Code"` does not resolve).
-    //
-    // Resolve the front process to a variable first; nesting a tell inside a
-    // `whose` filter breaks `front window` (AppleScript misparses it as
-    // `window 1 of process 1 whose frontmost = true`, errors -1719). Using
-    // `window 1` of an explicit reference works.
-    let script = """
-    tell application "System Events"
-        set frontProc to first application process whose frontmost is true
-        tell window 1 of frontProc
-            set position to {\(x), \(y)}
-            set size to {\(w), \(h)}
-        end tell
-    end tell
-    """
+    guard let app = NSWorkspace.shared.frontmostApplication else { return }
+    let appElem = AXUIElementCreateApplication(app.processIdentifier)
 
-    var error: NSDictionary?
-    if let appleScript = NSAppleScript(source: script) {
-        appleScript.executeAndReturnError(&error)
-        if let err = error {
-            NSLog("OpenMagnet: AppleScript error: %@", err)
-        }
-    }
+    // Some apps (Electron, JetBrains, MS Office) set AXEnhancedUserInterface
+    // and route window geometry through a non-deterministic codepath that
+    // breaks programmatic resize. Toggle it off for the duration of the call.
+    let euiAttr = "AXEnhancedUserInterface" as CFString
+    var euiVal: CFTypeRef?
+    let hadEUI = AXUIElementCopyAttributeValue(appElem, euiAttr, &euiVal) == .success
+                 && (euiVal as? Bool == true)
+    if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanFalse) }
+    defer { if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanTrue) } }
+
+    var winRef: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElem, kAXFocusedWindowAttribute as CFString, &winRef) == .success,
+          let w0 = winRef else { return }
+    let win = w0 as! AXUIElement
+
+    // Apply size → position → size. macOS clamps a window's size to the
+    // screen it's currently on, so a single set may be partially dropped when
+    // moving across displays. Re-asserting size after the move guarantees the
+    // final dimensions land on the destination screen.
+    var size = CGSize(width: w, height: h)
+    var origin = CGPoint(x: x, y: y)
+    guard let sizeVal = AXValueCreate(.cgSize, &size),
+          let posVal  = AXValueCreate(.cgPoint, &origin) else { return }
+    AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
+    AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
+    AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
 }
 
 // ── hotkey registration (Carbon) ─────────────────────────────────
@@ -164,24 +168,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         buildMenu()
-        // Trigger the Automation prompt before hotkeys go live so the user's
-        // first Ctrl+Opt+… is not eaten by the consent dialog.
-        requestAutomationPermission()
+        // Trigger the Accessibility prompt before hotkeys go live so the user's
+        // first Ctrl+Opt+… is not eaten by the consent dialog. Without an AX
+        // grant every AXUIElementSetAttributeValue below silently no-ops.
+        ensureAccessibility()
         registerHotkeys()
 
         NSLog("OpenMagnet: running, hotkeys registered")
     }
 
-    // Fire a harmless AppleScript at launch so macOS shows the Automation
-    // permission dialog immediately, rather than silently on first hotkey press.
-    func requestAutomationPermission() {
-        let probe = """
-        tell application "System Events"
-            name of first process
-        end tell
-        """
-        var error: NSDictionary?
-        NSAppleScript(source: probe)?.executeAndReturnError(&error)
+    func ensureAccessibility() {
+        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        AXIsProcessTrustedWithOptions(opts)
     }
 
     func buildMenu() {
