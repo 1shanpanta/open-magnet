@@ -159,8 +159,6 @@ let hotkeys: [HotkeyDef] = [
     HotkeyDef(keyCode: UInt32(kVK_ANSI_G),     position: .rightThird),
 ]
 
-var hotkeyRefs: [EventHotKeyRef?] = []
-
 func registerHotkeys() {
     var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
     InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
@@ -185,7 +183,6 @@ func registerHotkeys() {
             failed += 1
             NSLog("OpenMagnet: could not bind the hotkey for \(hk.position.rawValue) (OSStatus \(status)); another app may already own it. Use the menu instead.")
         }
-        hotkeyRefs.append(hkRef)
     }
     if failed > 0 {
         NSLog("OpenMagnet: \(hotkeys.count - failed)/\(hotkeys.count) hotkeys registered")
