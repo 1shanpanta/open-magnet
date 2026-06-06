@@ -28,6 +28,13 @@ All shortcuts are **Ctrl + Option + …**
 
 All 13 also live in the menu-bar drop-down with their shortcuts shown alongside. They sit under `Ctrl`+`Option`, so they do not collide with macOS Sequoia's native tiling shortcuts (which use `Fn`+`Control`).
 
+## Install
+
+Two ways to get it:
+
+1. **Download** the latest `OpenMagnet.zip` from [Releases](https://github.com/1shanpanta/open-magnet/releases), unzip, and drag `OpenMagnet.app` into `/Applications`. The build is ad-hoc signed (not notarized), so on first launch macOS will block it: right-click the app, choose **Open**, then confirm. (Or clear the quarantine flag once: `xattr -dr com.apple.quarantine /Applications/OpenMagnet.app`.)
+2. **Build from source** (below). Building locally produces no Gatekeeper prompt.
+
 ## Build
 
 ```bash
