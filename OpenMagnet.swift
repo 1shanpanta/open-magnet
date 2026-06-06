@@ -173,11 +173,19 @@ func registerHotkeys() {
 
     let modifiers: UInt32 = UInt32(controlKey | optionKey)
 
+    var failed = 0
     for (i, hk) in hotkeys.enumerated() {
         let hkID = EventHotKeyID(signature: OSType(0x4F504D47), id: UInt32(i))
         var hkRef: EventHotKeyRef?
-        RegisterEventHotKey(hk.keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &hkRef)
+        let status = RegisterEventHotKey(hk.keyCode, modifiers, hkID, GetApplicationEventTarget(), 0, &hkRef)
+        if status != noErr || hkRef == nil {
+            failed += 1
+            NSLog("OpenMagnet: could not bind the hotkey for \(hk.position.rawValue) (OSStatus \(status)); another app may already own it. Use the menu instead.")
+        }
         hotkeyRefs.append(hkRef)
+    }
+    if failed > 0 {
+        NSLog("OpenMagnet: \(hotkeys.count - failed)/\(hotkeys.count) hotkeys registered")
     }
 }
 
