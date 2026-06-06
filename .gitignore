@@ -1,5 +1,6 @@
 build/
 .DS_Store
+.macship
 
 # swift / xcode leftovers
 *.swiftmodule
