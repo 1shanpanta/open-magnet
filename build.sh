@@ -4,7 +4,11 @@ set -e
 APP_NAME="OpenMagnet"
 BUILD_DIR="build"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
-SIGNING_IDENTITY="Apple Development: Ishan Panta (TEAMID)"
+# Ad-hoc sign ("-") by default so a fresh clone builds on any Mac with no
+# Apple Developer account. Export SIGNING_IDENTITY to a real identity (e.g.
+# "Apple Development: Your Name (TEAMID)") to keep the TCC Accessibility grant
+# across rebuilds; ad-hoc changes the cdhash each build, so the grant resets.
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
@@ -41,15 +45,11 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <string>APPL</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>OpenMagnet uses Apple Events to move and resize the focused window of other apps.</string>
 </dict>
 </plist>
 PLIST
 
-# Sign with a stable Developer identity so TCC keeps the Automation grant
-# across rebuilds. An unsigned binary's cdhash changes every build, and TCC
-# silently drops grants whose identity no longer matches.
+# Sign the bundle (ad-hoc by default, or with $SIGNING_IDENTITY if exported).
 codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 codesign --verify --verbose "$APP_BUNDLE"
 
