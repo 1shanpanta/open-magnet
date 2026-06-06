@@ -54,8 +54,8 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
         return
     }
     let v = screen.visibleFrame
-    // AX uses top-left origin of the primary display, same as AppleScript did.
-    // For correct Y-flip on secondary monitors, subtract from the primary's height.
+    // AX uses a top-left origin anchored to the primary display. For a correct
+    // Y-flip on secondary monitors, subtract from the primary's height.
     let primaryH = (NSScreen.screens.first { $0.frame.origin == .zero } ?? screen).frame.height
 
     // convert from NSScreen coords (origin bottom-left) to screen coords (origin top-left)
@@ -194,7 +194,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // menu bar icon
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let btn = statusItem.button {
             btn.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "OpenMagnet")
@@ -208,7 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ensureAccessibility()
         registerHotkeys()
 
-        NSLog("OpenMagnet: running, hotkeys registered")
+        NSLog("OpenMagnet: running")
     }
 
     func ensureAccessibility() {
@@ -269,7 +268,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func menuOpenMagnet(_ sender: NSMenuItem) {
         let pos = OpenMagnetPosition.allCases[sender.tag]
-        // delay so menu closes and previous app regains focus
+        // let the menu dismiss before we read the focused window
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             openMagnetWindow(to: pos)
         }
