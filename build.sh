@@ -14,11 +14,18 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-# compile
-swiftc -O -o "$APP_BUNDLE/Contents/MacOS/$APP_NAME" \
-  -framework Cocoa \
-  -framework Carbon \
-  OpenMagnet.swift
+# Compile. Host arch by default; set UNIVERSAL=1 for a fat arm64 + x86_64
+# binary with a macOS 11 deployment target (used by the release workflow so
+# the download runs on both Intel and Apple Silicon).
+BIN="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+if [ "${UNIVERSAL:-}" = "1" ]; then
+  swiftc -O -target arm64-apple-macos11  -framework Cocoa -framework Carbon -o "$BIN.arm64"  OpenMagnet.swift
+  swiftc -O -target x86_64-apple-macos11 -framework Cocoa -framework Carbon -o "$BIN.x86_64" OpenMagnet.swift
+  lipo -create -output "$BIN" "$BIN.arm64" "$BIN.x86_64"
+  rm -f "$BIN.arm64" "$BIN.x86_64"
+else
+  swiftc -O -framework Cocoa -framework Carbon -o "$BIN" OpenMagnet.swift
+fi
 
 # Bundle the app icon
 cp resources/AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
@@ -53,13 +60,15 @@ PLIST
 codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
 codesign --verify --verbose "$APP_BUNDLE"
 
-# Install to ~/Applications via rsync. Only the changed pieces of the bundle
-# copy across, --delete prunes anything we removed, and because we sign with
-# a stable identity the existing TCC Automation grant carries over.
-INSTALL_DIR="$HOME/Applications"
-mkdir -p "$INSTALL_DIR"
-rsync -a --delete "$APP_BUNDLE/" "$INSTALL_DIR/$APP_NAME.app/"
-
 echo "Built and signed: $APP_BUNDLE"
-echo "Installed:        $INSTALL_DIR/$APP_NAME.app"
-echo "Run:   open '$INSTALL_DIR/$APP_NAME.app'"
+
+# Install to ~/Applications via rsync (set INSTALL=0 to skip, e.g. in CI).
+# With a stable SIGNING_IDENTITY the existing TCC Accessibility grant carries
+# over; --delete prunes anything removed from the bundle.
+if [ "${INSTALL:-1}" = "1" ]; then
+  INSTALL_DIR="$HOME/Applications"
+  mkdir -p "$INSTALL_DIR"
+  rsync -a --delete "$APP_BUNDLE/" "$INSTALL_DIR/$APP_NAME.app/"
+  echo "Installed:        $INSTALL_DIR/$APP_NAME.app"
+  echo "Run:   open '$INSTALL_DIR/$APP_NAME.app'"
+fi
