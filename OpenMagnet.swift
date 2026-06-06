@@ -39,6 +39,14 @@ func currentScreen() -> NSScreen? {
     return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens.first
 }
 
+// Reads a boolean Accessibility attribute, defaulting to false when it is
+// absent or unreadable.
+func axBool(_ element: AXUIElement, _ attribute: String) -> Bool {
+    var value: CFTypeRef?
+    return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success
+        && (value as? Bool == true)
+}
+
 // ── window manipulation via Accessibility API ────────────────────
 func openMagnetWindow(to pos: OpenMagnetPosition) {
     guard let screen = currentScreen() else {
@@ -103,12 +111,10 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     // programmatic resize. size → position → size dodges macOS's per-screen
     // size clamp when moving across displays.
     let apply = {
-        let euiAttr = "AXEnhancedUserInterface" as CFString
-        var euiVal: CFTypeRef?
-        let hadEUI = AXUIElementCopyAttributeValue(appElem, euiAttr, &euiVal) == .success
-                     && (euiVal as? Bool == true)
-        if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanFalse) }
-        defer { if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanTrue) } }
+        let euiName = "AXEnhancedUserInterface"
+        let hadEUI = axBool(appElem, euiName)
+        if hadEUI { AXUIElementSetAttributeValue(appElem, euiName as CFString, kCFBooleanFalse) }
+        defer { if hadEUI { AXUIElementSetAttributeValue(appElem, euiName as CFString, kCFBooleanTrue) } }
 
         var size = CGSize(width: w, height: h)
         var origin = CGPoint(x: x, y: y)
@@ -122,12 +128,9 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     // A window in native fullscreen lives in its own Space and ignores
     // geometry writes. Take it out of fullscreen first, then apply the frame
     // once the animated transition has settled.
-    let fsAttr = "AXFullScreen" as CFString
-    var fsVal: CFTypeRef?
-    let isFullScreen = AXUIElementCopyAttributeValue(win, fsAttr, &fsVal) == .success
-                       && (fsVal as? Bool == true)
-    if isFullScreen {
-        AXUIElementSetAttributeValue(win, fsAttr, kCFBooleanFalse)
+    let fsName = "AXFullScreen"
+    if axBool(win, fsName) {
+        AXUIElementSetAttributeValue(win, fsName as CFString, kCFBooleanFalse)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: apply)
     } else {
         apply()
