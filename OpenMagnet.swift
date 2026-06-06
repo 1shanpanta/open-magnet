@@ -34,14 +34,17 @@ enum OpenMagnetPosition: String, CaseIterable {
 // Returns the screen the user is currently looking at — the one containing
 // the mouse cursor. Handles multi-monitor setups where NSScreen.main would
 // otherwise snap to the wrong display.
-func currentScreen() -> NSScreen {
+func currentScreen() -> NSScreen? {
     let mouse = NSEvent.mouseLocation
-    return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
+    return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens.first
 }
 
 // ── window manipulation via Accessibility API ────────────────────
 func openMagnetWindow(to pos: OpenMagnetPosition) {
-    let screen = currentScreen()
+    guard let screen = currentScreen() else {
+        NSLog("OpenMagnet: no active display, ignoring snap")
+        return
+    }
     let v = screen.visibleFrame
     // AX uses top-left origin of the primary display, same as AppleScript did.
     // For correct Y-flip on secondary monitors, subtract from the primary's height.
@@ -77,35 +80,58 @@ func openMagnetWindow(to pos: OpenMagnetPosition) {
     case .rightThird:   x = sx + sw * 2 / 3; w = sw - sw * 2 / 3
     }
 
-    guard let app = NSWorkspace.shared.frontmostApplication else { return }
+    guard let app = NSWorkspace.shared.frontmostApplication else {
+        NSLog("OpenMagnet: no frontmost application")
+        NSSound.beep()
+        return
+    }
     let appElem = AXUIElementCreateApplication(app.processIdentifier)
-
-    // Some apps (Electron, JetBrains, MS Office) set AXEnhancedUserInterface
-    // and route window geometry through a non-deterministic codepath that
-    // breaks programmatic resize. Toggle it off for the duration of the call.
-    let euiAttr = "AXEnhancedUserInterface" as CFString
-    var euiVal: CFTypeRef?
-    let hadEUI = AXUIElementCopyAttributeValue(appElem, euiAttr, &euiVal) == .success
-                 && (euiVal as? Bool == true)
-    if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanFalse) }
-    defer { if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanTrue) } }
 
     var winRef: CFTypeRef?
     guard AXUIElementCopyAttributeValue(appElem, kAXFocusedWindowAttribute as CFString, &winRef) == .success,
-          let w0 = winRef else { return }
+          let w0 = winRef else {
+        // Most often this means Accessibility permission is not granted.
+        NSLog("OpenMagnet: no focused window (grant Accessibility access if snaps do nothing)")
+        NSSound.beep()
+        return
+    }
     let win = w0 as! AXUIElement
 
-    // Apply size → position → size. macOS clamps a window's size to the
-    // screen it's currently on, so a single set may be partially dropped when
-    // moving across displays. Re-asserting size after the move guarantees the
-    // final dimensions land on the destination screen.
-    var size = CGSize(width: w, height: h)
-    var origin = CGPoint(x: x, y: y)
-    guard let sizeVal = AXValueCreate(.cgSize, &size),
-          let posVal  = AXValueCreate(.cgPoint, &origin) else { return }
-    AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
-    AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
-    AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
+    // Apply the geometry, toggling AXEnhancedUserInterface off around the
+    // writes. Some apps (Electron, JetBrains, MS Office) set EUI and route
+    // window geometry through a non-deterministic codepath that breaks
+    // programmatic resize. size → position → size dodges macOS's per-screen
+    // size clamp when moving across displays.
+    let apply = {
+        let euiAttr = "AXEnhancedUserInterface" as CFString
+        var euiVal: CFTypeRef?
+        let hadEUI = AXUIElementCopyAttributeValue(appElem, euiAttr, &euiVal) == .success
+                     && (euiVal as? Bool == true)
+        if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanFalse) }
+        defer { if hadEUI { AXUIElementSetAttributeValue(appElem, euiAttr, kCFBooleanTrue) } }
+
+        var size = CGSize(width: w, height: h)
+        var origin = CGPoint(x: x, y: y)
+        guard let sizeVal = AXValueCreate(.cgSize, &size),
+              let posVal  = AXValueCreate(.cgPoint, &origin) else { return }
+        AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
+        AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, posVal)
+        AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, sizeVal)
+    }
+
+    // A window in native fullscreen lives in its own Space and ignores
+    // geometry writes. Take it out of fullscreen first, then apply the frame
+    // once the animated transition has settled.
+    let fsAttr = "AXFullScreen" as CFString
+    var fsVal: CFTypeRef?
+    let isFullScreen = AXUIElementCopyAttributeValue(win, fsAttr, &fsVal) == .success
+                       && (fsVal as? Bool == true)
+    if isFullScreen {
+        AXUIElementSetAttributeValue(win, fsAttr, kCFBooleanFalse)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: apply)
+    } else {
+        apply()
+    }
 }
 
 // ── hotkey registration (Carbon) ─────────────────────────────────
