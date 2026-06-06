@@ -225,6 +225,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(NSMenuItem.separator())
+        let axItem = NSMenuItem(title: "Open Accessibility Settings…", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        axItem.target = self
+        menu.addItem(axItem)
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         statusItem.menu = menu
@@ -235,6 +238,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // delay so menu closes and previous app regains focus
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             openMagnetWindow(to: pos)
+        }
+    }
+
+    @objc func openAccessibilitySettings() {
+        // Deep-link straight to the Accessibility pane so a user whose snaps
+        // do nothing can grant permission without hunting through Settings.
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 }
