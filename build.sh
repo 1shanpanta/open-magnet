@@ -4,11 +4,34 @@ set -e
 APP_NAME="OpenMagnet"
 BUILD_DIR="build"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
-# Ad-hoc sign ("-") by default so a fresh clone builds on any Mac with no
-# Apple Developer account. Export SIGNING_IDENTITY to a real identity (e.g.
-# "Apple Development: Your Name (TEAMID)") to keep the TCC Accessibility grant
-# across rebuilds; ad-hoc changes the cdhash each build, so the grant resets.
-SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+# TCC keys the Accessibility grant to the signing identity, and ad-hoc changes
+# the cdhash every build, so the grant resets each time. One identity in the
+# keychain is therefore used as is, several is an error rather than a guess, and
+# none falls back to ad-hoc so a fresh clone still builds with no certificate.
+SIGNING_IDENTITY="${SIGN_IDENTITY:-${SIGNING_IDENTITY:-}}"
+IDENTITIES="$(security find-identity -v -p codesigning \
+  | sed -n 's/^ *[0-9][0-9]*) [0-9A-F]* "\(.*\)"$/\1/p')"
+COUNT="$(printf '%s' "$IDENTITIES" | grep -c . || true)"
+
+if [ -z "$SIGNING_IDENTITY" ]; then
+  case "$COUNT" in
+    0) SIGNING_IDENTITY="-" ;;
+    1) SIGNING_IDENTITY="$IDENTITIES" ;;
+    *)
+      echo "error: $COUNT code signing identities found, so pick one:" >&2
+      printf '%s\n' "$IDENTITIES" | sed 's/^/    /' >&2
+      echo "  choose one: SIGN_IDENTITY=\"My Identity\" ./build.sh" >&2
+      echo "  ad-hoc:     SIGN_IDENTITY=- ./build.sh" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+  echo "Signing ad-hoc. The Accessibility grant resets on the next build."
+else
+  echo "Signing with:     $SIGNING_IDENTITY"
+fi
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
